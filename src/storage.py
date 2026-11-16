@@ -76,3 +76,94 @@ class MovieStorage:
 
         finally:
             connection.close()
+
+    
+
+    def select_columns(self, columns, limit=5):
+        """Return id plus the requested movie columns, ordered by id."""
+        if not columns:
+            logger.error("Select at least one column")
+            raise ValueError("Select at least one column")
+
+        for column in columns:
+            if column not in MOVIE_COLUMNS:
+                logger.error(f"Unsupported column: {column}")
+                raise ValueError(f"Unsupported column: {column}")
+
+        selected_columns = ", ".join(["id"] + columns)
+        connection = get_connection(self.db_path)
+
+        try:
+            rows = connection.execute(
+                f"""
+                SELECT {selected_columns}
+                FROM movies
+                ORDER BY id
+                LIMIT ?
+                """,
+                (limit,)
+            ).fetchall()
+
+            result = [dict(row) for row in rows]
+
+            logger.debug(
+                f"Selected movie columns: columns={columns}, "
+                f"rows={len(result)}"
+            )
+
+            return result
+
+        finally:
+            connection.close()
+
+    def count_movies(self):
+        """Return the number of stored movies using SQL COUNT(*)."""
+        connection = get_connection(self.db_path)
+
+        try:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM movies"
+            ).fetchone()
+
+            return row["count"]
+
+        finally:
+            connection.close()
+
+    def query_movies(self, columns, min_rating, limit):
+        """Return selected fields from matching movies using SQL."""
+        if not columns:
+            logger.error("Select at least one column")
+            raise ValueError("Select at least one column")
+
+        for column in columns:
+            if column not in MOVIE_COLUMNS:
+                logger.error(f"Unsupported column: {column}")
+                raise ValueError(f"Unsupported column: {column}")
+
+        selected_columns = ", ".join(["id"] + columns)
+        connection = get_connection(self.db_path)
+
+        try:
+            rows = connection.execute(
+                f"""
+                SELECT {selected_columns}
+                FROM movies
+                WHERE rating >= ?
+                ORDER BY rating DESC, id ASC
+                LIMIT ?
+                """,
+                (min_rating, limit)
+            ).fetchall()
+
+            result = [dict(row) for row in rows]
+
+            logger.debug(
+                f"Queried movies: columns={columns}, "
+                f"rows={len(result)}"
+            )
+
+            return result
+
+        finally:
+            connection.close()

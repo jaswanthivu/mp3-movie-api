@@ -1,12 +1,13 @@
 from .models import (
-    DatasetInfo,
     HealthResponse,
     ValidationSettings,
     MissingSettings,
     OutlierSettings,
     ProcessingSettings,
     ProcessConfig,
-    ProcessingReport,
+    MovieUploadInfo,
+    MovieDataResponse,
+    MovieProcessingReport,
 )
 
 from .storage import MovieStorage
