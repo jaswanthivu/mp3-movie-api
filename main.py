@@ -17,6 +17,7 @@ from src import (
     HealthResponse,
     ProcessConfig,
     MovieStorage,
+    MovieCache,
     MovieUploadInfo,
     MovieDataResponse,
     MovieProcessingReport,
@@ -34,6 +35,7 @@ app = FastAPI(title="Data Processing API", version="1.0.0")
 app.middleware("http")(log_requests)
 
 storage = MovieStorage()
+cache = MovieCache()
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -85,6 +87,7 @@ async def upload_movies(file: UploadFile = File(...)):
     df = df[MOVIE_COLUMNS]
 
     storage.save(df)
+    cache.invalidate()
 
     logger.info(
         f"Uploaded movies: filename={file.filename}, rows={len(df)}"
@@ -102,49 +105,35 @@ async def upload_movies(file: UploadFile = File(...)):
 def get_movies(limit: int = Query(default=100, ge=1)):
     """Return up to limit stored movies."""
 
+    cached_response = cache.get(limit)
+
+    if cached_response is not None:
+        logger.info(f"Cache hit for movies: limit={limit}")
+        return cached_response
+
     total_rows = storage.count_movies()
 
     if total_rows == 0:
-        return {
+        response = {
             "data": [],
             "total_rows": 0
         }
+    else:
+        data = storage.select_columns(MOVIE_COLUMNS, limit)
 
-    data = storage.select_columns(MOVIE_COLUMNS, limit)
+        response = {
+            "data": data,
+            "total_rows": total_rows
+        }
+
+    cache.set(limit, response)
 
     logger.info(
-        f"Retrieved movies: returned_rows={len(data)}, "
+        f"Retrieved movies: returned_rows={len(response['data'])}, "
         f"total_rows={total_rows}"
     )
 
-    return {
-        "data": data,
-        "total_rows": total_rows
-    }
-
-@app.get("/movies/search", response_model=list[dict])
-def query_movies(
-    columns: list[str] = Query(default=["title"]),
-    min_rating: float = Query(default=0, ge=0, le=10),
-    limit: int = Query(default=100, ge=1)
-):
-    """Return selected movie fields filtered by minimum rating."""
-
-    try:
-        rows = storage.query_movies(columns, min_rating, limit)
-    except ValueError as error:
-        logger.warning(f"Movie query failed: {error}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(error)
-        )
-
-    logger.info(
-        f"Queried movies: columns={columns}, "
-        f"min_rating={min_rating}, returned_rows={len(rows)}"
-    )
-
-    return rows
+    return response
 
 @app.post("/movies/process", response_model=MovieProcessingReport)
 def process_movies(config: ProcessConfig):
@@ -206,6 +195,7 @@ def process_movies(config: ProcessConfig):
         )
 
     storage.save(processed_df)
+    cache.invalidate()
 
     logger.info(
         f"Processed movies: "
